@@ -9,6 +9,11 @@ const SERVICES = ['git-upload-pack', 'git-receive-pack'];
 const HEADERS = ['accept', 'authorization', 'content-type', 'git-protocol'];
 // further servers are refused unlisted, so a website cannot fill the popup
 const MAX_PENDING = 5;
+// requests at once per website; each holds its request body in memory
+const MAX_RUNNING = 8;
+
+/** requests in flight, by website */
+const running = new Map();
 
 /** @typedef {{ code: string, message: string, server?: string }} Refusal */
 
@@ -317,6 +322,7 @@ async function refusal(site, url, method) {
  * one port per request
  * the bridge sends the request's head, its body in chunks and an end; this answers with the
  * response's head, its body in chunks and an end, or an error at any point
+ * anything out of that order ends the request
  */
 api.runtime.onConnect.addListener((port) => {
   if (port.name !== CHANNEL) return;
@@ -330,11 +336,23 @@ api.runtime.onConnect.addListener((port) => {
   const body = [];
   /** @type {{ url: string, method?: string, headers?: Record<string, string> } | undefined} */
   let head;
+  /** @type {'head' | 'body' | 'sent'} */
+  let expecting = 'head';
   port.onDisconnect.addListener(() => abort.abort());
-  port.onMessage.addListener(async (message) => {
-    if (message.kind === 'head') head = message;
-    else if (message.kind === 'chunk') body.push(fromBase64(message.data));
-    else if (message.kind === 'end' && head) await send(site, head, body, port, abort.signal);
+  port.onMessage.addListener((message) => {
+    const kind = message?.kind;
+    if (expecting === 'head' && kind === 'head' && typeof message.url === 'string') {
+      head = message;
+      expecting = 'body';
+    } else if (expecting === 'body' && kind === 'chunk' && typeof message.data === 'string') {
+      body.push(fromBase64(message.data));
+    } else if (expecting === 'body' && kind === 'end' && head) {
+      expecting = 'sent';
+      void send(site, head, body, port, abort.signal);
+    } else {
+      abort.abort();
+      port.disconnect();
+    }
   });
 });
 
@@ -354,6 +372,16 @@ async function send(site, request, chunks, port, signal) {
       // the page went away; the abort signal ends the fetch
     }
   };
+  const count = running.get(site) ?? 0;
+  if (count >= MAX_RUNNING) {
+    reply({
+      kind: 'error',
+      code: 'busy',
+      message: `${site} has ${count} requests running through Git CORS Bridge already`,
+    });
+    return;
+  }
+  running.set(site, count + 1);
   try {
     const url = new URL(request.url);
     const method = (request.method ?? 'GET').toUpperCase();
@@ -375,26 +403,22 @@ async function send(site, request, chunks, port, signal) {
       offset += chunk.length;
     }
     // the user's cookies for the server stay out: only what the page itself sends authenticates
-    // like git's default (http.followRedirects=initial), only the ref advertisement follows a
-    // redirect, and only within the server; a POST, whose body would go along, never does
+    // no redirect is followed, since a followed one has reached its target before it can be checked
+    // an extension does not get to see the target, so same-origin ones are refused too
     const response = await fetch(url, {
       method,
       headers,
       body: method === 'POST' ? payload : undefined,
       credentials: 'omit',
       cache: 'no-store',
-      redirect: method === 'GET' ? 'follow' : 'manual',
+      redirect: 'manual',
       signal,
     });
-    if (response.type === 'opaqueredirect' || new URL(response.url).origin !== url.origin) {
-      void response.body?.cancel();
+    if (response.type === 'opaqueredirect') {
       reply({
         kind: 'error',
         code: 'redirected',
-        message:
-          response.type === 'opaqueredirect'
-            ? `${url.origin} redirected a ${method}, which is not followed`
-            : `${url.origin} redirected to ${new URL(response.url).origin}, which is not approved`,
+        message: `${url.origin} redirected ${url.pathname}, which is not followed: use the repository's current address`,
       });
       return;
     }
@@ -421,6 +445,10 @@ async function send(site, request, chunks, port, signal) {
       code: 'network',
       message: error instanceof Error ? error.message : String(error),
     });
+  } finally {
+    const left = (running.get(site) ?? 1) - 1;
+    if (left > 0) running.set(site, left);
+    else running.delete(site);
   }
 }
 

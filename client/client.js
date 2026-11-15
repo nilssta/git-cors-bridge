@@ -10,7 +10,7 @@ export class BridgeError extends Error {
   /**
    * @param {string} message
    * @param {string} code 'not-enabled', 'not-approved', 'not-git', 'insecure', 'redirected',
-   *   'network', 'disconnected' or 'unavailable'
+   *   'busy', 'network', 'disconnected' or 'unavailable'
    * @param {string} [server] the server's origin, for 'not-approved'
    */
   constructor(message, code, server) {

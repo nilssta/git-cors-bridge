@@ -61,7 +61,13 @@ function enabled(site, entry) {
         ]),
       );
     }
-    nodes.push(section('Asking to reach', entry.pending.length, list));
+    const asking = section('Asking to reach', entry.pending.length, list);
+    asking.append(
+      element('p', 'Allowing a server lets this website reach every repository on it.', {
+        className: 'lead',
+      }),
+    );
+    nodes.push(asking);
   }
 
   const servers =

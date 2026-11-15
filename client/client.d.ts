@@ -6,6 +6,7 @@ export type BridgeErrorCode =
   | 'not-git'
   | 'insecure'
   | 'redirected'
+  | 'busy'
   | 'network'
   | 'disconnected'
   | 'unavailable';
