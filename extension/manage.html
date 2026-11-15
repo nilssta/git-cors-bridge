@@ -1,0 +1,41 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Git CORS Bridge: connections</title>
+    <link rel="icon" href="icons/icon.svg" />
+    <link rel="stylesheet" href="ui.css" />
+    <link rel="stylesheet" href="manage.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="top">
+        <img src="icons/icon.svg" alt="" width="32" height="32" />
+        <div>
+          <h1>Connections</h1>
+          <p class="muted">The websites you enabled, and the git servers each of them may reach.</p>
+        </div>
+      </header>
+
+      <div class="toolbar">
+        <input
+          id="filter"
+          type="search"
+          placeholder="Filter by website, server or repository"
+          aria-label="Filter connections"
+          autocomplete="off"
+        />
+        <div class="bulk" id="bulk"></div>
+      </div>
+      <p id="summary" class="muted" aria-live="polite"></p>
+      <p id="status" class="problem" role="status" hidden></p>
+
+      <main id="sites"></main>
+    </div>
+    <script src="shared.js"></script>
+    <script src="ui.js"></script>
+    <script src="manage.js"></script>
+  </body>
+</html>
