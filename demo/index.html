@@ -1,0 +1,142 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Git CORS Bridge demo</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --muted: light-dark(#5d6470, #9aa1ad);
+        --border: light-dark(#e1e4e9, #343943);
+        --ok: light-dark(#17803d, #5ad38a);
+        --wait: light-dark(#a35207, #f3b54a);
+        --problem: light-dark(#b42318, #ff8a80);
+      }
+      body {
+        max-width: 40rem;
+        margin: 0 auto;
+        padding: 1rem;
+        font-family: system-ui, sans-serif;
+        line-height: 1.5;
+      }
+      section {
+        margin-top: 1rem;
+        padding: 0 1rem 1rem;
+        border: 1px solid var(--border);
+      }
+      .lead,
+      .hint {
+        color: var(--muted);
+      }
+      #bridge[data-state='ready'] h2,
+      #message[data-kind='ok'] {
+        color: var(--ok);
+      }
+      #bridge[data-state='missing'] h2,
+      #message[data-kind='problem'] {
+        color: var(--problem);
+      }
+      #waiting {
+        border-color: var(--wait);
+      }
+      label {
+        display: block;
+        margin-top: 0.75rem;
+      }
+      input {
+        box-sizing: border-box;
+        width: 100%;
+      }
+      .actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 1rem;
+      }
+      #files {
+        max-height: 14rem;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Git CORS Bridge demo</h1>
+    <p class="lead">
+      Clones a repository into memory with isomorphic-git, through the extension, and can push a
+      commit back.
+    </p>
+
+    <section id="bridge" data-state="checking" aria-live="polite">
+      <h2 id="bridge-title">Looking for Git CORS Bridge…</h2>
+      <div id="bridge-help" hidden>
+        <p>The extension is not installed, or not enabled on this website.</p>
+        <ol>
+          <li>Install Git CORS Bridge.</li>
+          <li>Click its toolbar button and choose <em>Enable on this website</em>.</li>
+        </ol>
+        <p class="hint">This page notices once the extension is enabled.</p>
+        <div class="actions"><button id="recheck" type="button">Check again</button></div>
+      </div>
+    </section>
+
+    <section id="waiting" role="alert" hidden>
+      <h2>Waiting for your approval</h2>
+      <p>
+        Git CORS Bridge needs your permission before this website may reach
+        <strong id="waiting-host"></strong>.
+      </p>
+      <ol>
+        <li>
+          Click the Git CORS Bridge button in the toolbar; its badge counts the servers waiting.
+        </li>
+        <li>Choose <em>Allow</em> next to <strong id="waiting-host-again"></strong>.</li>
+      </ol>
+      <p class="hint">The page carries on by itself once you allow it.</p>
+      <div class="actions"><button id="stop" type="button">Stop waiting</button></div>
+    </section>
+
+    <section>
+      <h2>Repository</h2>
+      <form id="form">
+        <label for="url">URL</label>
+        <input id="url" type="url" required value="https://github.com/octocat/Hello-World.git" />
+        <div>
+          <div>
+            <label for="username">Username</label>
+            <input
+              id="username"
+              autocomplete="off"
+              placeholder="for a private repository or a push"
+            />
+          </div>
+          <div>
+            <label for="password">Password or token</label>
+            <input id="password" type="password" autocomplete="off" />
+          </div>
+        </div>
+        <p class="hint">
+          The credentials stay in this page and go only to that server; the browser's own cookies
+          for it are not sent.
+        </p>
+        <div class="actions">
+          <button id="clone" type="submit">Clone</button>
+          <button id="push" type="button" disabled>Commit and push</button>
+        </div>
+        <p class="hint">
+          <em>Commit and push</em> writes <code>bridge-demo.txt</code> into the repository; use one
+          you can throw away.
+        </p>
+      </form>
+      <p id="message" role="status"></p>
+    </section>
+
+    <section id="result" hidden>
+      <h2>Cloned</h2>
+      <p>Branch <code id="branch"></code> at <code id="head"></code></p>
+      <ul id="files"></ul>
+    </section>
+
+    <script type="module" src="./demo.ts"></script>
+  </body>
+</html>
