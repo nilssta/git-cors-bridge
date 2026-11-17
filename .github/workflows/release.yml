@@ -1,0 +1,109 @@
+# SPDX-License-Identifier: MIT
+
+# on a tag such as v0.2.0: test, package, sign for firefox, publish a github release
+# actions are pinned by commit, since these jobs hold secrets
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  package:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+      AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Package, refusing a tag that differs from the manifest's version
+        run: node scripts/package.mjs "${GITHUB_REF_NAME#v}"
+      # unlisted: mozilla signs it without a store listing, and the .xpi installs from anywhere
+      - name: Sign for Firefox
+        if: env.AMO_JWT_ISSUER != ''
+        run: >
+          pnpm exec web-ext sign --source-dir dist/firefox --artifacts-dir dist --channel unlisted
+          --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET"
+      - name: Note the missing Firefox signature
+        if: env.AMO_JWT_ISSUER == ''
+        run: echo "::notice::AMO_JWT_ISSUER is not set; the release has no signed Firefox package."
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # without the firefox signature there is no .xpi to attach
+          shopt -s nullglob
+          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes \
+            dist/*.zip dist/*.xpi client/client.js client/client.d.ts
+
+# store uploads, for once a listing exists: each store's first version is created by hand, which
+# gives the ids below
+# the packages are the ci job's artifact; chrome's upload tool is already a dev dependency, edge
+# needs the scripts/edge-publish.sh kept out of the repository until then
+#
+#   chrome:
+#     needs: [test, package]
+#     runs-on: ubuntu-latest
+#     env:
+#       EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+#       PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
+#       CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+#       CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+#       REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+#     steps:
+#       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#         if: env.EXTENSION_ID != ''
+#       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+#         if: env.EXTENSION_ID != ''
+#       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+#         if: env.EXTENSION_ID != ''
+#         with:
+#           node-version: 24
+#           cache: pnpm
+#       # the upload tool comes from the lockfile, like every other dependency
+#       - if: env.EXTENSION_ID != ''
+#         run: pnpm install --frozen-lockfile
+#       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+#         with:
+#           name: packages
+#           path: dist
+#       - name: Upload to the Chrome Web Store and submit for review
+#         if: env.EXTENSION_ID != ''
+#         run: pnpm exec chrome-webstore-upload --source dist/git-cors-bridge-*-chrome.zip
+#       - if: env.EXTENSION_ID == ''
+#         run: echo "::notice::CHROME_EXTENSION_ID is not set; nothing was sent to the Chrome Web Store."
+#
+#   edge:
+#     needs: [test, package]
+#     runs-on: ubuntu-latest
+#     env:
+#       EDGE_PRODUCT_ID: ${{ secrets.EDGE_PRODUCT_ID }}
+#       EDGE_CLIENT_ID: ${{ secrets.EDGE_CLIENT_ID }}
+#       EDGE_API_KEY: ${{ secrets.EDGE_API_KEY }}
+#     steps:
+#       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+#         with:
+#           name: packages
+#           path: dist
+#       - name: Upload to Edge Add-ons and submit for review
+#         if: env.EDGE_PRODUCT_ID != ''
+#         run: scripts/edge-publish.sh dist/git-cors-bridge-*-chrome.zip
+#       - if: env.EDGE_PRODUCT_ID == ''
+#         run: echo "::notice::EDGE_PRODUCT_ID is not set; nothing was sent to Edge Add-ons."
